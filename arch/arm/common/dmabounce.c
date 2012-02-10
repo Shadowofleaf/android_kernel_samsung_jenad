@@ -360,7 +360,7 @@ static void dmabounce_unmap_page(struct device *dev, dma_addr_t dma_addr, size_t
 	unmap_single(dev, buf, size, dir);
 }
 
-int dmabounce_sync_for_cpu(struct device *dev, dma_addr_t addr,
+static int __dmabounce_sync_for_cpu(struct device *dev, dma_addr_t addr,
 		size_t sz, enum dma_data_direction dir)
 {
 	struct safe_buffer *buf;
@@ -391,7 +391,16 @@ int dmabounce_sync_for_cpu(struct device *dev, dma_addr_t addr,
 	return 0;
 }
 
-int dmabounce_sync_for_device(struct device *dev, dma_addr_t addr,
+static void dmabounce_sync_for_cpu(struct device *dev,
+		dma_addr_t handle, size_t size, enum dma_data_direction dir)
+{
+	if (!__dmabounce_sync_for_cpu(dev, handle, size, dir))
+		return;
+
+	arm_dma_ops.sync_single_for_cpu(dev, handle, size, dir);
+}
+
+static int __dmabounce_sync_for_device(struct device *dev, dma_addr_t addr,
 		size_t sz, enum dma_data_direction dir)
 {
 	struct safe_buffer *buf;
@@ -440,9 +449,6 @@ static int dmabounce_set_mask(struct device *dev, u64 dma_mask)
 }
 
 static struct dma_map_ops dmabounce_ops = {
-	.alloc			= arm_dma_alloc,
-	.free			= arm_dma_free,
-	.mmap			= arm_dma_mmap,
 	.map_page		= dmabounce_map_page,
 	.unmap_page		= dmabounce_unmap_page,
 	.sync_single_for_cpu	= dmabounce_sync_for_cpu,
