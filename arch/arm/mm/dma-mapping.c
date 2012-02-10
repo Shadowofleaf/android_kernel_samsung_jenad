@@ -973,9 +973,16 @@ void arm_dma_sync_sg_for_cpu(struct device *dev, struct scatterlist *sg,
 	struct scatterlist *s;
 	int i;
 
-	for_each_sg(sg, s, nents, i)
-		ops->sync_single_for_cpu(dev, sg_dma_address(s), s->length,
-					 dir);
+	for_each_sg(sg, s, nents, i) {
+		if (!dmabounce_sync_for_cpu(dev, sg_dma_address(s),
+					    sg_dma_len(s), dir))
+			continue;
+
+		__dma_page_dev_to_cpu(sg_page(s), s->offset,
+				      s->length, dir);
+	}
+
+	debug_dma_sync_sg_for_cpu(dev, sg, nents, dir);
 }
 
 /**
@@ -992,9 +999,16 @@ void arm_dma_sync_sg_for_device(struct device *dev, struct scatterlist *sg,
 	struct scatterlist *s;
 	int i;
 
-	for_each_sg(sg, s, nents, i)
-		ops->sync_single_for_device(dev, sg_dma_address(s), s->length,
-					    dir);
+	for_each_sg(sg, s, nents, i) {
+		if (!dmabounce_sync_for_device(dev, sg_dma_address(s),
+					sg_dma_len(s), dir))
+			continue;
+
+		__dma_page_cpu_to_dev(sg_page(s), s->offset,
+				      s->length, dir);
+	}
+
+	debug_dma_sync_sg_for_device(dev, sg, nents, dir);
 }
 
 /*
