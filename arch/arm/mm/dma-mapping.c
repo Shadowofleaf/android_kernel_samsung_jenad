@@ -37,23 +37,6 @@
 
 #include "mm.h"
 
-/*
- * The DMA API is built upon the notion of "buffer ownership".  A buffer
- * is either exclusively owned by the CPU (and therefore may be accessed
- * by it) or exclusively owned by the DMA device.  These helper functions
- * represent the transitions between these two ownership states.
- *
- * Note, however, that on later ARMs, this notion does not work due to
- * speculative prefetches.  We model our approach on the assumption that
- * the CPU does do speculative prefetches, which means we clean caches
- * before transfers and delay cache invalidation until transfer completion.
- *
- */
-static void __dma_page_cpu_to_dev(struct page *, unsigned long,
-		size_t, enum dma_data_direction);
-static void __dma_page_dev_to_cpu(struct page *, unsigned long,
-		size_t, enum dma_data_direction);
-
 /**
  * arm_dma_map_page - map a portion of a page for streaming DMA
  * @dev: valid struct device pointer, or NULL for ISA and EISA-like devices
@@ -68,13 +51,11 @@ static void __dma_page_dev_to_cpu(struct page *, unsigned long,
  * The device owns this memory once this call has completed.  The CPU
  * can regain ownership by calling dma_unmap_page().
  */
-static dma_addr_t arm_dma_map_page(struct device *dev, struct page *page,
+static inline dma_addr_t arm_dma_map_page(struct device *dev, struct page *page,
 	     unsigned long offset, size_t size, enum dma_data_direction dir,
 	     struct dma_attrs *attrs)
 {
-	if (!arch_is_coherent())
-		__dma_page_cpu_to_dev(page, offset, size, dir);
-	return pfn_to_dma(dev, page_to_pfn(page)) + offset;
+	return __dma_map_page(dev, page, offset, size, dir);
 }
 
 /**
@@ -91,39 +72,38 @@ static dma_addr_t arm_dma_map_page(struct device *dev, struct page *page,
  * After this call, reads by the CPU to the buffer are guaranteed to see
  * whatever the device wrote there.
  */
-static void arm_dma_unmap_page(struct device *dev, dma_addr_t handle,
+static inline void arm_dma_unmap_page(struct device *dev, dma_addr_t handle,
 		size_t size, enum dma_data_direction dir,
 		struct dma_attrs *attrs)
 {
-	if (!arch_is_coherent())
-		__dma_page_dev_to_cpu(pfn_to_page(dma_to_pfn(dev, handle)),
-				      handle & ~PAGE_MASK, size, dir);
+	__dma_unmap_page(dev, handle, size, dir);
 }
 
-static void arm_dma_sync_single_for_cpu(struct device *dev,
+static inline void arm_dma_sync_single_for_cpu(struct device *dev,
 		dma_addr_t handle, size_t size, enum dma_data_direction dir)
 {
 	unsigned int offset = handle & (PAGE_SIZE - 1);
 	struct page *page = pfn_to_page(dma_to_pfn(dev, handle-offset));
-	if (!arch_is_coherent())
-		__dma_page_dev_to_cpu(page, offset, size, dir);
+	if (!dmabounce_sync_for_cpu(dev, handle, size, dir))
+		return;
+
+	__dma_page_dev_to_cpu(page, offset, size, dir);
 }
 
-static void arm_dma_sync_single_for_device(struct device *dev,
+static inline void arm_dma_sync_single_for_device(struct device *dev,
 		dma_addr_t handle, size_t size, enum dma_data_direction dir)
 {
 	unsigned int offset = handle & (PAGE_SIZE - 1);
 	struct page *page = pfn_to_page(dma_to_pfn(dev, handle-offset));
-	if (!arch_is_coherent())
-		__dma_page_cpu_to_dev(page, offset, size, dir);
+	if (!dmabounce_sync_for_device(dev, handle, size, dir))
+		return;
+
+	__dma_page_cpu_to_dev(page, offset, size, dir);
 }
 
 static int arm_dma_set_mask(struct device *dev, u64 dma_mask);
 
 struct dma_map_ops arm_dma_ops = {
-	.alloc			= arm_dma_alloc,
-	.free			= arm_dma_free,
-	.mmap			= arm_dma_mmap,
 	.map_page		= arm_dma_map_page,
 	.unmap_page		= arm_dma_unmap_page,
 	.map_sg			= arm_dma_map_sg,
@@ -809,6 +789,7 @@ void arm_dma_free(struct device *dev, size_t size, void *cpu_addr,
 		__free_from_contiguous(dev, page, size);
 	}
 }
+EXPORT_SYMBOL(dma_free_coherent);
 
 static void dma_cache_maint_page(struct page *page, unsigned long offset,
 	size_t size, enum dma_data_direction dir,
@@ -953,8 +934,6 @@ void arm_dma_unmap_sg(struct device *dev, struct scatterlist *sg, int nents,
 	struct dma_map_ops *ops = get_dma_ops(dev);
 	struct scatterlist *s;
 
-	int i;
-
 	for_each_sg(sg, s, nents, i)
 		ops->unmap_page(dev, sg_dma_address(s), sg_dma_len(s), dir, attrs);
 }
@@ -981,8 +960,6 @@ void arm_dma_sync_sg_for_cpu(struct device *dev, struct scatterlist *sg,
 		__dma_page_dev_to_cpu(sg_page(s), s->offset,
 				      s->length, dir);
 	}
-
-	debug_dma_sync_sg_for_cpu(dev, sg, nents, dir);
 }
 
 /**
@@ -1007,8 +984,6 @@ void arm_dma_sync_sg_for_device(struct device *dev, struct scatterlist *sg,
 		__dma_page_cpu_to_dev(sg_page(s), s->offset,
 				      s->length, dir);
 	}
-
-	debug_dma_sync_sg_for_device(dev, sg, nents, dir);
 }
 
 /*
