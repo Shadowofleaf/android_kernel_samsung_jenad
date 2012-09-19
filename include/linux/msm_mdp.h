@@ -70,7 +70,10 @@
 #define MSMFB_MDP_PP _IOWR(MSMFB_IOCTL_MAGIC, 156, struct msmfb_mdp_pp)
 #define MSMFB_OVERLAY_VSYNC_CTRL _IOW(MSMFB_IOCTL_MAGIC, 160, unsigned int)
 #define MSMFB_VSYNC_CTRL  _IOW(MSMFB_IOCTL_MAGIC, 161, unsigned int)
+#define MSMFB_BUFFER_SYNC  _IOW(MSMFB_IOCTL_MAGIC, 162, struct mdp_buf_sync)
 #define MSMFB_METADATA_SET  _IOW(MSMFB_IOCTL_MAGIC, 162, struct msmfb_metadata)
+#define MSMFB_OVERLAY_COMMIT      _IOW(MSMFB_IOCTL_MAGIC, 163, unsigned int)
+
 #define FB_TYPE_3D_PANEL 0x10101010
 #define MDP_IMGTYPE2_START 0x10000
 #define MSMFB_DRIVER_VERSION	0xF9E8D701
@@ -487,6 +490,7 @@ struct mdp_page_protection {
 	uint32_t page_protection;
 };
 
+<<<<<<< HEAD
 enum {
   metadata_op_none,
   metadata_op_base_blend,
@@ -503,6 +507,15 @@ struct msmfb_metadata {
   union {
     struct mdp_blend_cfg blend_cfg;
   } data;
+=======
+#define MDP_MAX_FENCE_FD	4
+
+struct mdp_buf_sync {
+	uint32_t flags;
+	uint32_t acq_fen_fd_cnt;
+	int *acq_fen_fd;
+	int *rel_fen_fd;
+>>>>>>> 3c5821d... msm: display: Buffer sync point support
 };
 
 struct mdp_mixer_info {
