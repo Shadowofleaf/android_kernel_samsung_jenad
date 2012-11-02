@@ -51,7 +51,7 @@ extern uint32 mdp_intr_mask;
 int first_pixel_start_x;
 int first_pixel_start_y;
 
-static ssize_t vsync_show_event(struct device *dev,
+ssize_t mdp_dma_lcdc_show_event(struct device *dev,
 		struct device_attribute *attr, char *buf)
 {
 	ssize_t ret = 0;
@@ -68,15 +68,6 @@ static ssize_t vsync_show_event(struct device *dev,
 	buf[strlen(buf) + 1] = '\0';
 	return ret;
 }
-
-static DEVICE_ATTR(vsync_event, S_IRUGO, vsync_show_event, NULL);
-static struct attribute *vsync_fs_attrs[] = {
-	&dev_attr_vsync_event.attr,
-	NULL,
-};
-static struct attribute_group vsync_fs_attr_group = {
-	.attrs = vsync_fs_attrs,
-};
 
 int mdp_lcdc_on(struct platform_device *pdev)
 {
@@ -334,6 +325,9 @@ int mdp_lcdc_on(struct platform_device *pdev)
 		vsync_cntrl.sysfs_created = 1;
 	}
 	mdp_histogram_ctrl_all(TRUE);
+#if defined(CONFIG_MACH_NEVIS3G_REV03)
+	ret = panel_next_on(pdev);
+#endif
 
 	return ret;
 }
