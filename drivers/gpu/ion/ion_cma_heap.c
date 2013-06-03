@@ -21,6 +21,7 @@
 #include <linux/errno.h>
 #include <linux/err.h>
 #include <linux/dma-mapping.h>
+#include <linux/dma-contiguous.h>
 #include <mach/iommu_domains.h>
 
 #include <asm/cacheflush.h>

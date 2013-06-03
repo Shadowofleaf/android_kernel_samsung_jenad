@@ -17,11 +17,6 @@
 #include <linux/platform_device.h>
 #include <linux/slab.h>
 #include <linux/memory_alloc.h>
-#include <linux/mm.h>
-#include <linux/mm_types.h>
-#include <linux/sched.h>
-#include <linux/rwsem.h>
-#include <linux/uaccess.h>
 #include <mach/ion.h>
 #include <mach/msm_memtypes.h>
 #include "../ion_priv.h"
@@ -105,22 +100,9 @@ static void ion_set_base_address(struct ion_platform_heap *heap,
 			    struct ion_co_heap_pdata *co_heap_data,
 			    struct ion_cp_heap_pdata *cp_data)
 {
-	if (cp_data->reusable) {
-		const struct fmem_data *fmem_info = fmem_get_info();
-
-		if (!fmem_info) {
-			pr_err("fmem info pointer NULL!\n");
-			BUG();
-		}
-
-		heap->base = fmem_info->phys - fmem_info->reserved_size_low;
-		cp_data->virt_addr = fmem_info->virt;
-		pr_info("ION heap %s using FMEM\n", shared_heap->name);
-	} else {
-		heap->base = msm_ion_get_base(heap->size + shared_heap->size,
-						shared_heap->memory_type,
-						co_heap_data->align);
-	}
+	heap->base = msm_ion_get_base(heap->size + shared_heap->size,
+					shared_heap->memory_type,
+					co_heap_data->align);
 	if (heap->base) {
 		shared_heap->base = heap->base + heap->size;
 		cp_data->secure_base = heap->base;
@@ -145,16 +127,7 @@ static void allocate_co_memory(struct ion_platform_heap *heap,
 		if (shared_heap) {
 			struct ion_cp_heap_pdata *cp_data =
 			   (struct ion_cp_heap_pdata *) shared_heap->extra_data;
-			if (cp_data->mem_is_fmem && cp_data->fixed_position == FIXED_MIDDLE) {
-				const struct fmem_data *fmem_info =
-					fmem_get_info();
-
-				if (!fmem_info) {
-					pr_err("fmem info pointer NULL!\n");
-					BUG();
-				}
-
-				cp_data->virt_addr = fmem_info->virt;
+			if (cp_data->fixed_position == FIXED_MIDDLE) {
 				if (!cp_data->secure_base) {
 					cp_data->secure_base = heap->base;
 					cp_data->secure_size =
@@ -206,17 +179,6 @@ static void msm_ion_allocate(struct ion_platform_heap *heap)
 			struct ion_cp_heap_pdata *data =
 				(struct ion_cp_heap_pdata *)
 				heap->extra_data;
-			if (data->reusable) {
-				const struct fmem_data *fmem_info =
-					fmem_get_info();
-				heap->base = fmem_info->phys;
-				data->virt_addr = fmem_info->virt;
-				pr_info("ION heap %s using FMEM\n", heap->name);
-			} else if (data->mem_is_fmem) {
-				const struct fmem_data *fmem_info =
-					fmem_get_info();
-				heap->base = fmem_info->phys + fmem_info->size;
-			}
 			align = data->align;
 			break;
 		}
@@ -271,102 +233,6 @@ static void check_for_heap_overlap(const struct ion_platform_heap heap_list[],
 			}
 		}
 	}
-}
-
-static int check_vaddr_bounds(unsigned long start, unsigned long end)
-{
-	struct mm_struct *mm = current->active_mm;
-	struct vm_area_struct *vma;
-	int ret = 1;
-
-	if (end < start)
-		goto out;
-
-	down_read(&mm->mmap_sem);
-	vma = find_vma(mm, start);
-	if (vma && vma->vm_start < end) {
-		if (start < vma->vm_start)
-			goto out_up;
-		if (end > vma->vm_end)
-			goto out_up;
-		ret = 0;
-	}
-
-out_up:
-	up_read(&mm->mmap_sem);
-out:
-	return ret;
-}
-
-static long msm_ion_custom_ioctl(struct ion_client *client,
-				unsigned int cmd,
-				unsigned long arg)
-{
-	switch (cmd) {
-	case ION_IOC_CLEAN_CACHES:
-	case ION_IOC_INV_CACHES:
-	case ION_IOC_CLEAN_INV_CACHES:
-	{
-		struct ion_flush_data data;
-		unsigned long start, end;
-		struct ion_handle *handle = NULL;
-		int ret;
-
-		if (copy_from_user(&data, (void __user *)arg,
-					sizeof(struct ion_flush_data)))
-			return -EFAULT;
-
-		start = (unsigned long) data.vaddr;
-		end = (unsigned long) data.vaddr + data.length;
-
-		if (check_vaddr_bounds(start, end)) {
-			pr_err("%s: virtual address %p is out of bounds\n",
-				__func__, data.vaddr);
-			return -EINVAL;
-		}
-
-		if (!data.handle) {
-			handle = ion_import_dma_buf(client, data.fd);
-			if (IS_ERR(handle)) {
-				pr_info("%s: Could not import handle: %d\n",
-					__func__, (int)handle);
-				return -EINVAL;
-			}
-		}
-
-		ret = ion_do_cache_op(client,
-				data.handle ? data.handle : handle,
-				data.vaddr, data.offset, data.length,
-				cmd);
-
-		if (!data.handle)
-			ion_free(client, handle);
-
-		if (ret < 0)
-			return ret;
-		break;
-
-	}
-	case ION_IOC_GET_FLAGS:
-	{
-		struct ion_flag_data data;
-		int ret;
-		if (copy_from_user(&data, (void __user *)arg,
-					sizeof(struct ion_flag_data)))
-			return -EFAULT;
-
-		ret = ion_handle_get_flags(client, data.handle, &data.flags);
-		if (ret < 0)
-			return ret;
-		if (copy_to_user((void __user *)arg, &data,
-					sizeof(struct ion_flag_data)))
-			return -EFAULT;
-		break;
-	}
-	default:
-		return -ENOTTY;
-	}
-	return 0;
 }
 
 static int msm_ion_probe(struct platform_device *pdev)

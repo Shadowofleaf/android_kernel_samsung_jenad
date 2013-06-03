@@ -50,8 +50,8 @@
 #include <linux/atmel_maxtouch.h>
 #include <linux/msm_adc.h>
 #include <linux/ion.h>
-#include <linux/dma-contiguous.h>
 #include <linux/dma-mapping.h>
+#include <linux/dma-contiguous.h>
 #include "devices.h"
 #include "timer.h"
 #include "board-msm7x27a-regulator.h"
@@ -61,6 +61,13 @@
 #include <mach/socinfo.h>
 #include "pm-boot.h"
 #include "board-msm7627a.h"
+
+#define CAMERA_HEAP_BASE 0x0
+#ifdef CONFIG_CMA
+#define CAMERA_HEAP_TYPE ION_HEAP_TYPE_DMA
+#else
+#define CAMERA_HEAP_TYPE ION_HEAP_TYPE_CARVEOUT
+#endif
 
 #define PMEM_KERNEL_EBI1_SIZE	0x3A000
 #define MSM_PMEM_AUDIO_SIZE	0xF0000
@@ -831,7 +838,7 @@ struct ion_platform_heap msm7x27a_heaps[] = {
 			.name	= ION_CAMERA_HEAP_NAME,
 			.memory_type = ION_EBI_TYPE,
 			.extra_data = (void *)&co_mm_ion_pdata,
-			.priv	= (void *)&ion_cma_device.dev,
+			.priv = (void *)&ion_cma_device.dev,
 		},
 		/* AUDIO HEAP 1*/
 		{
@@ -862,6 +869,10 @@ struct ion_platform_heap msm7x27a_heaps[] = {
 #endif
 };
 
+/**
+ * These heaps are listed in the order they will be allocated.
+ * Don't swap the order unless you know what you are doing!
+ */
 static struct ion_platform_data ion_pdata = {
 	.nr = MSM_ION_HEAP_NUM,
 	.has_outer_cache = 1,
@@ -973,6 +984,25 @@ static void __init msm7x27a_reserve(void)
 {
 	reserve_info = &msm7x27a_reserve_info;
 	msm_reserve();
+
+#ifdef CONFIG_CMA
+	dma_declare_contiguous(
+			&ion_cma_device.dev,
+			msm_ion_camera_size,
+			CAMERA_HEAP_BASE,
+			0x26000000);
+#endif
+
+#ifdef CONFIG_SRECORDER_MSM
+    if (0x0 != get_mempools_pstart_addr())
+    {
+        s_srecorder_reserved_mem_phys_start_addr = get_mempools_pstart_addr();// - SRECORDER_RESERVED_MEM_SIZE;
+    }
+    else
+    {
+        printk(">>>> Can't know the start address for S-Recorder's reserved memory!\n");
+    }
+#endif /* CONFIG_SRECORDER_MSM */
 }
 
 static void __init msm8625_reserve(void)
