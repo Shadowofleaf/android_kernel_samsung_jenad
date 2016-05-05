@@ -59,8 +59,6 @@ static int camera_node;
 static enum msm_camera_type camera_type[MSM_MAX_CAMERA_SENSORS];
 static uint32_t sensor_mount_angle[MSM_MAX_CAMERA_SENSORS];
 
-struct ion_client *client_for_ion;
-
 static const char *vfe_config_cmd[] = {
 	"CMD_GENERAL",  /* 0 */
 	"CMD_AXI_CFG_OUT1",
@@ -325,7 +323,7 @@ static int msm_pmem_table_add(struct hlist_head *ptype,
 
 	rc = check_pmem_info(info, len);
 	if (rc < 0)
-		goto out2;
+		return rc;
 
 	paddr += info->offset;
 	len = info->len;
@@ -352,14 +350,6 @@ static int msm_pmem_table_add(struct hlist_head *ptype,
 		__func__, info->type, paddr, (unsigned long)info->vaddr,
 		info->planar0_off, info->planar1_off, info->planar2_off);
 	return 0;
-out2:
-#ifdef CONFIG_MSM_MULTIMEDIA_USE_ION
-	ion_free(client_for_ion, region->handle);
-#endif
-out1:
-	kfree(region);
-out:
-	return rc;
 }
 
 /* return of 0 means failure */
