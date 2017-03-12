@@ -134,37 +134,11 @@ enum cp_mem_usage {
  */
 #define ION_SECURE (1 << ION_HEAP_ID_RESERVED)
 
-/**
- * Macro should be used with ion_heap_ids defined above.
- */
-#define ION_HEAP(bit) (1 << (bit))
-
-#define ION_VMALLOC_HEAP_NAME	"vmalloc"
-#define ION_AUDIO_HEAP_NAME	"audio"
-#define ION_SF_HEAP_NAME	"sf"
-#define ION_MM_HEAP_NAME	"mm"
-#define ION_CAMERA_HEAP_NAME	"camera_preview"
-#define ION_IOMMU_HEAP_NAME	"iommu"
-#define ION_MFC_HEAP_NAME	"mfc"
-#define ION_WB_HEAP_NAME	"wb"
-#define ION_MM_FIRMWARE_HEAP_NAME	"mm_fw"
-#define ION_QSECOM_HEAP_NAME	"qsecom"
-#define ION_FMEM_HEAP_NAME	"fmem"
-
-#define CACHED          1
-#define UNCACHED        0
-
-#define ION_CACHE_SHIFT 0
-
-#define ION_SET_CACHE(__cache)  ((__cache) << ION_CACHE_SHIFT)
-
-#define ION_IS_CACHED(__flags)	((__flags) & (1 << ION_CACHE_SHIFT))
-
 /*
- * This flag allows clients when mapping into the IOMMU to specify to
- * defer un-mapping from the IOMMU until the buffer memory is freed.
+ * This flag allows clients to defer unsecuring a buffer until the buffer
+ * is actually freed.
  */
-#define ION_IOMMU_UNMAP_DELAYED 1
+#define ION_UNSECURE_DELAYED	1
 
 #ifdef __KERNEL__
 #include <linux/err.h>
@@ -594,50 +568,6 @@ int ion_secure_heap(struct ion_device *dev, int heap_id, int version,
  */
 int ion_unsecure_heap(struct ion_device *dev, int heap_id, int version,
 			void *data);
-
-/**
- * msm_ion_secure_heap - secure a heap. Wrapper around ion_secure_heap.
- *
-  * @heap_id - heap id to secure.
- *
- * Secure a heap
- * Returns 0 on success
- */
-int msm_ion_secure_heap(int heap_id);
-
-/**
- * msm_ion_unsecure_heap - unsecure a heap. Wrapper around ion_unsecure_heap.
- *
-  * @heap_id - heap id to secure.
- *
- * Un-secure a heap
- * Returns 0 on success
- */
-int msm_ion_unsecure_heap(int heap_id);
-
-/**
- * msm_ion_secure_heap_2_0 - secure a heap using 2.0 APIs
- *  Wrapper around ion_secure_heap.
- *
- * @heap_id - heap id to secure.
- * @usage - usage hint to TZ
- *
- * Secure a heap
- * Returns 0 on success
- */
-int msm_ion_secure_heap_2_0(int heap_id, enum cp_mem_usage usage);
-
-/**
- * msm_ion_unsecure_heap - unsecure a heap secured with 3.0 APIs.
- * Wrapper around ion_unsecure_heap.
- *
- * @heap_id - heap id to secure.
- * @usage - usage hint to TZ
- *
- * Un-secure a heap
- * Returns 0 on success
- */
-int msm_ion_unsecure_heap_2_0(int heap_id, enum cp_mem_usage usage);
 
 /**
  * msm_ion_do_cache_op - do cache operations.
