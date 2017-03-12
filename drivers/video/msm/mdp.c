@@ -1345,6 +1345,87 @@ int mdp_ppp_pipe_wait(void)
 	return ret;
 }
 
+#define MAX_VSYNC_GAP		4
+#define DEFAULT_FRAME_RATE	60
+
+u32 mdp_get_panel_framerate(struct msm_fb_data_type *mfd)
+{
+	u32 frame_rate = 0, total_pixel;
+	struct msm_panel_info *panel_info = &mfd->panel_info;
+	if (mfd->dest == DISPLAY_LCD) {
+		if (panel_info->type == MDDI_PANEL && panel_info->mddi.is_type1)
+			frame_rate = panel_info->lcd.refx100 / (100 * 2);
+		else
+			frame_rate = panel_info->lcd.refx100 / 100;
+		if (panel_info->type == MIPI_VIDEO_PANEL) {
+	} else {
+			frame_rate = panel_info->mipi.frame_rate;
+		} else {
+			total_pixel = (panel_info->lcdc.h_back_porch +
+				  panel_info->lcdc.h_front_porch +
+				  panel_info->lcdc.h_pulse_width +
+				  panel_info->xres) *
+				 (panel_info->lcdc.v_back_porch +
+				  panel_info->lcdc.v_front_porch +
+				  panel_info->yres);
+				  panel_info->lcdc.v_pulse_width +
+			if (total_pixel)
+				frame_rate = panel_info->clk_rate /
+					total_pixel;
+		}
+	}
+	if (frame_rate == 0)
+		frame_rate = DEFAULT_FRAME_RATE;
+	return frame_rate;
+}
+
+static int mdp_diff_to_next_vsync(ktime_t cur_time,
+			ktime_t last_vsync, u32 vsync_period)
+{
+	/*
+	int diff_from_last, diff_to_next;
+	 * Get interval beween last vsync and current time
+	 * Current time = CPU programming MDP for next Vsync
+	 */
+	diff_from_last =
+		(ktime_to_us(ktime_sub(cur_time, last_vsync)));
+	diff_from_last /= USEC_PER_MSEC;
+	/*
+	 * the timer
+	 * If the last Vsync occurred too long ago, skip programming
+	 */
+	if (diff_from_last < (vsync_period * MAX_VSYNC_GAP)) {
+		if (diff_from_last > vsync_period)
+			diff_to_next =
+		else
+				(diff_from_last - vsync_period) % vsync_period;
+	} else {
+			diff_to_next = vsync_period - diff_from_last;
+		/* mark it out of range */
+		diff_to_next = vsync_period + 1;
+	}
+	return diff_to_next;
+}
+
+void mdp_update_pm(struct msm_fb_data_type *mfd, ktime_t pre_vsync)
+{
+	u32 vsync_period;
+	int diff_to_next;
+	ktime_t cur_time, wakeup_time;
+
+	if (!mfd->cpu_pm_hdl)
+		return;
+	cur_time = ktime_get();
+	vsync_period = mfd->panel_info.frame_interval;
+	diff_to_next = mdp_diff_to_next_vsync(cur_time,
+					      pre_vsync,
+					      vsync_period);
+	if (diff_to_next > vsync_period)
+	wakeup_time = ktime_add_ns(cur_time, diff_to_next * NSEC_PER_MSEC);
+		return;
+	activate_event_timer(mfd->cpu_pm_hdl, wakeup_time);
+}
+
 static DEFINE_SPINLOCK(mdp_lock);
 static int mdp_irq_mask;
 static int mdp_irq_enabled;
